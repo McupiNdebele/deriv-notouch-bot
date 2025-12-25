@@ -14,31 +14,56 @@ const TARGET_PAYOUT = 1.10; // 10% payout
 ws.on("open", () => {
   ws.send(JSON.stringify({ authorize: TOKEN }));
 });
-
+///////
 ws.on("message", (msg) => {
   const data = JSON.parse(msg);
 
+  // 1) If Deriv sends an error, log it and stop this cycle
+  if (data.error) {
+    console.log("Deriv error:", data.error.message);
+    return;
+  }
+
+  // 2) After authorize, request a proposal
   if (data.msg_type === "authorize") {
     console.log("Authorized");
-    requestProposal();
+
+    ws.send(JSON.stringify({
+      proposal: 1,
+      amount: STAKE,
+      basis: "stake",
+      contract_type: "NO_TOUCH",
+      currency: "USD",
+      symbol: SYMBOL,
+      duration: DURATION,
+      duration_unit: DURATION_UNIT,
+
+      // IMPORTANT:
+      // You MUST set a barrier for NO_TOUCH.
+      // Put your chosen barrier here:
+      barrier: "PUT_BARRIER_HERE"
+    }));
+
+    return;
   }
 
+  // 3) Only buy when we actually received a proposal
   if (data.msg_type === "proposal") {
-    buyContract(data.proposal.id);
-  }
-
-  if (data.msg_type === "buy") {
-    console.log("Trade placed:", data.buy.contract_id);
-  }
-
-  if (data.msg_type === "proposal_open_contract") {
-    if (data.proposal_open_contract.is_sold) {
-      console.log("Trade result:", data.proposal_open_contract.profit);
-      ws.close(); // stop after one trade (aggressive control)
+    if (!data.proposal || !data.proposal.id) {
+      console.log("No proposal id in response:", data);
+      return;
     }
+
+    console.log("Got proposal:", data.proposal.id);
+    buyContract(data.proposal.id);
+    return;
   }
+
+  // (Optional) log other messages for debugging
+  // console.log("Other msg:", data.msg_type);
 });
 
+///////
 function requestProposal() {
   ws.send(JSON.stringify({
     proposal: 1,
